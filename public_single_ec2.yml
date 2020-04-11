@@ -1,0 +1,109 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Create the following.
+  -- single EC2 instance in public subnet.
+  -- Elastic IP(attach to EC2).'
+
+# Input Parameters.
+Parameters:
+  VpcId:
+    Description: VPC ID
+    Type: AWS::EC2::VPC::Id
+
+  PublicSubnetId:
+    Description: Public subnet ID
+    Type: AWS::EC2::Subnet::Id
+
+  InstanceName:
+    Description: Instance name
+    Type: String
+
+  InstanceType:
+    Description: Instance type
+    Type: String
+    Default: t3.nano
+    AllowedValues:
+      - t3.nano
+      - t3.micro
+      - t3.small
+    ConstraintDescription: must be a valid EC2 instance type.
+
+  KeyName:
+    Description: Key pair
+    Type: AWS::EC2::KeyPair::KeyName
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - VpcId
+          - PublicSubnetId
+      - Label:
+          default: EC2 Configuration
+        Parameters:
+          - InstanceName
+          - InstanceType
+          - KeyName
+
+Mappings:
+  AWSInstanceType2Arch:
+    t3.nano:
+      Arch: HVM64
+    t3.micro:
+      Arch: HVM64
+    t3.small:
+      Arch: HVM64
+
+  AWSRegionArch2AMI:
+    ap-northeast-1:
+      HVM64: ami-0af1df87db7b650f4
+
+Resources:
+  # EC2
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SubnetId: !Ref PublicSubnetId
+      UserData:
+        !Base64 |
+          #!/bin/bash
+          yum update -y
+          yum install git -y
+      InstanceType: !Ref InstanceType
+      SecurityGroupIds:
+        - "sg-04a9a00b1dec267f5"
+        - "sg-01262f7776e292333"
+      KeyName: !Ref KeyName
+      ImageId:
+        !FindInMap
+          - AWSRegionArch2AMI
+          - !Ref AWS::Region
+          - !FindInMap
+            - AWSInstanceType2Arch
+            - !Ref InstanceType
+            - Arch
+      Tags: [
+        {
+          "Key": "Name",
+          "Value": !Ref InstanceName,
+        }
+      ]
+
+  # EIP
+  ElasticIpAddress:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: 'vpc'
+  IPAssoc:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref EC2Instance
+      EIP: !Ref ElasticIpAddress
+
+Outputs:
+  EC2InstanceId:
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub ${AWS::StackName}-instance-id

@@ -1,0 +1,214 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Create the following.
+  -- VPC.
+  -- PublicSubnet(AZ a and AZ c).
+  -- PrivateSubnet(AZ a and AZ c).'
+
+# 入力パラメータ。プレフィックス名と、VPC・各サブネットのCIDR Blockを入力する。
+Parameters:
+  TagPrefix:
+    Type: String
+
+  VpcCidrBlock:
+    Description: VPC CIDR block
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.0.0/16
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+  PublicSubnet1aCiderBlock:
+    Description: Public subnet 1a CIDR
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.1.0/24
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+  PublicSubnet1cCiderBlock:
+    Description: Public subnet 1c CIDR
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.2.0/24
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+  PrivateSubnet1aCiderBlock:
+    Description: Private subnet 1a CIDR
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.3.0/24
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+  PrivateSubnet1cCiderBlock:
+    Description: Private subnet 1c CIDR
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 10.0.4.0/24
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: General Configuration
+        Parameters:
+          - TagPrefix
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - VpcCidrBlock
+          - PublicSubnet1aCiderBlock
+          - PublicSubnet1cCiderBlock
+          - PrivateSubnet1aCiderBlock
+          - PrivateSubnet1cCiderBlock
+
+Resources:
+  # VPCの作成
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${TagPrefix}-vpc
+
+  # インターネットGWの作成
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${TagPrefix}-igw
+
+  # インターネットGWをVPCにアタッチ
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # サブネットの作成
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    DependsOn: AttachGateway
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: "ap-northeast-1a"
+      CidrBlock: !Ref PublicSubnet1aCiderBlock
+      Tags:
+        - Key: Name
+          Value: !Sub ${TagPrefix}-pub-sbn-1a
+
+  PublicSubnet1c:
+    Type: AWS::EC2::Subnet
+    DependsOn: AttachGateway
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: "ap-northeast-1c"
+      CidrBlock: !Ref PublicSubnet1cCiderBlock
+      Tags:
+        - Key: Name
+          Value: !Sub ${TagPrefix}-pub-sbn-1c
+
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: "ap-northeast-1a"
+      CidrBlock: !Ref PrivateSubnet1aCiderBlock
+      Tags:
+        - Key: Name
+          Value: !Sub ${TagPrefix}-pri-sbn-1a
+
+  PrivateSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: "ap-northeast-1c"
+      CidrBlock: !Ref PrivateSubnet1cCiderBlock
+      Tags:
+        - Key: Name
+          Value: !Sub ${TagPrefix}-pri-sbn-1c
+
+  # ルートテーブルの作成
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${TagPrefix}-pub-rt"
+
+  PrivateRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${TagPrefix}-pri-rt"
+
+  # ルートテーブルにインターネットGWを追加
+  PublicRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  # ルートテーブルにサブネットを追加
+  PublicSubnet1aRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet1a
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet1cRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet1c
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateSubnet1aRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet1a
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet1cRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet1c
+      RouteTableId: !Ref PrivateRouteTable
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+    Export:
+      Name: !Sub ${AWS::StackName}-vpc
+  PublicSubnet1aId:
+    Value: !Ref PublicSubnet1a
+    Export:
+      Name: !Sub ${AWS::StackName}-pub-sbn-1a
+  PublicSubnet1cId:
+    Value: !Ref PublicSubnet1c
+    Export:
+      Name: !Sub ${AWS::StackName}-pub-sbn-1c
+  PrivateSubnet1aId:
+    Value: !Ref PrivateSubnet1a
+    Export:
+      Name: !Sub ${AWS::StackName}-pri-sbn-1a
+  PrivateSubnet1cId:
+    Value: !Ref PrivateSubnet1c
+    Export:
+      Name: !Sub ${AWS::StackName}-pri-sbn-1c
